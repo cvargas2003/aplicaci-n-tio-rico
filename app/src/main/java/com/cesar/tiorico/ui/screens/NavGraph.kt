@@ -6,10 +6,10 @@ import androidx.navigation.compose.*
 import com.cesar.tiorico.ui.screens.*
 import com.cesar.tiorico.viewmodel.GameViewModel
 
-// 🎯 RUTAS CENTRALIZADAS (PRO)
+// 🎯 RUTAS
 object Routes {
     const val LOGIN = "login"
-    const val META = "meta"
+    const val SETUP = "setup" // 🔥 nueva pantalla
     const val GAME = "game"
     const val RESULT = "result"
 }
@@ -29,18 +29,18 @@ fun NavGraph() {
         composable(Routes.LOGIN) {
             LoginScreen(
                 onLoginSuccess = {
-                    navController.navigate(Routes.META) {
+                    navController.navigate(Routes.SETUP) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 }
             )
         }
 
-        // 🎯 META
-        composable(Routes.META) {
-            MetaScreen(
+        // 👥 SETUP JUGADORES
+        composable(Routes.SETUP) {
+            PlayerSetupScreen(
                 viewModel = viewModel,
-                onStartGame = {
+                onStart = {
                     navController.navigate(Routes.GAME)
                 }
             )
@@ -49,9 +49,16 @@ fun NavGraph() {
         // 🎮 GAME
         composable(Routes.GAME) {
 
-            GameScreen(viewModel = viewModel)
+            GameScreen(
+                viewModel = viewModel,
+                onExit = {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                }
+            )
 
-            // 🔥 NAVEGACIÓN SEGURA (IMPORTANTE)
+            // 🔥 CUANDO TERMINA → RESULT
             LaunchedEffect(viewModel.state.juegoTerminado) {
                 if (viewModel.state.juegoTerminado) {
                     navController.navigate(Routes.RESULT)
@@ -64,9 +71,8 @@ fun NavGraph() {
             ResultScreen(
                 viewModel = viewModel,
                 onRestart = {
-                    viewModel.reiniciarJuego()
-                    navController.navigate(Routes.META) {
-                        popUpTo(Routes.META) { inclusive = true }
+                    navController.navigate(Routes.SETUP) {
+                        popUpTo(Routes.SETUP) { inclusive = true }
                     }
                 },
                 onExit = {

@@ -3,6 +3,7 @@ package com.cesar.tiorico.viewmodel
 import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import com.cesar.tiorico.model.GameState
+import com.cesar.tiorico.model.Player
 import kotlin.random.Random
 
 class GameViewModel : ViewModel() {
@@ -10,105 +11,140 @@ class GameViewModel : ViewModel() {
     var state by mutableStateOf(GameState())
         private set
 
-    // 🎯 Seleccionar meta
-    fun seleccionarMeta(metaSeleccionada: Int) {
-        state = state.copy(meta = metaSeleccionada)
+    // 🔥 INICIAR JUEGO
+    fun iniciarJuego(cantidad: Int, meta: Int) {
+        val jugadores = List(cantidad) {
+            Player(nombre = "Jugador ${it + 1}")
+        }
+
+        state = GameState(
+            jugadores = jugadores,
+            meta = meta
+        )
     }
 
-    // 🔄 Reiniciar juego
+    // 🔁 REINICIAR
     fun reiniciarJuego() {
         state = GameState(meta = state.meta)
     }
 
-    // 🟢 AHORRAR
-    fun ahorrar() {
-        ejecutarAccion(200, "🟢 Ahorraste +200")
+    private fun jugadorActual(): Player? {
+        return state.jugadores.getOrNull(state.jugadorActualIndex)
     }
 
-    // 🟡 INVERTIR
+    // 🟢
+    fun ahorrar() = ejecutarAccion(200, "Ahorró +200")
+
+    // 🟡
     fun invertir() {
-        val resultado = if (Random.nextBoolean()) 500 else -300
-        val mensaje = if (resultado > 0)
-            "🟡 Invertiste y ganaste +$resultado"
-        else
-            "🟡 Invertiste y perdiste $resultado"
-
-        ejecutarAccion(resultado, mensaje)
+        val valor = if (Random.nextBoolean()) 500 else -300
+        val msg = if (valor > 0) "Ganó +$valor" else "Perdió $valor"
+        ejecutarAccion(valor, "Invirtió: $msg")
     }
 
-    // 🔴 GASTAR
-    fun gastar() {
-        ejecutarAccion(-150, "🔴 Gastaste -150")
-    }
+    // 🔴
+    fun gastar() = ejecutarAccion(-150, "Gastó -150")
 
-    // 🎯 FUNCIÓN CENTRAL (MEJORA GRANDE)
-    private fun ejecutarAccion(valor: Int, mensajeAccion: String) {
+    // 🎯 LÓGICA CENTRAL
+    private fun ejecutarAccion(valor: Int, accion: String) {
 
         if (state.juegoTerminado) return
 
-        var dineroNuevo = state.dinero + valor
-        var mensajeFinal = mensajeAccion
+        val jugador = jugadorActual() ?: return
 
-        // 🎲 EVENTO SOLO EN ALGUNOS TURNOS (60%)
+        var dineroNuevo = jugador.dinero + valor
+        var mensaje = "${jugador.nombre}: $accion"
+
+        // 🎲 EVENTO
         if (Random.nextFloat() < 0.6f) {
-            val (valorEvento, mensajeEvento) = generarEvento()
-            dineroNuevo += valorEvento
-            mensajeFinal += "\n$mensajeEvento"
+            val (v, m) = evento()
+            dineroNuevo += v
+            mensaje += "\n$m"
         }
 
-        val resultado = verificarEstado(dineroNuevo, mensajeFinal)
+        // 🏆 GANA POR META
+        if (dineroNuevo >= state.meta) {
+            actualizarJugador(dineroNuevo)
+            state = state.copy(
+                mensaje = "$mensaje\n🏆 ${jugador.nombre} alcanzó la meta",
+                juegoTerminado = true,
+                ganador = jugador.nombre,
+                historial = state.historial + mensaje
+            )
+            return
+        }
+
+        // 💀 ELIMINADO
+        if (dineroNuevo <= 0) {
+
+            val lista = state.jugadores.toMutableList()
+            lista.removeAt(state.jugadorActualIndex)
+
+            // 🔥 SI SOLO QUEDA 1 → GANA AUTOMÁTICO
+            if (lista.size == 1) {
+                state = state.copy(
+                    jugadores = lista,
+                    mensaje = "$mensaje\n💀 ${jugador.nombre} eliminado",
+                    juegoTerminado = true,
+                    ganador = lista.first().nombre,
+                    historial = state.historial + mensaje
+                )
+                return
+            }
+
+            // 🔥 SI NO QUEDAN JUGADORES (caso extremo)
+            if (lista.isEmpty()) {
+                state = state.copy(
+                    jugadores = emptyList(),
+                    mensaje = "Todos los jugadores fueron eliminados",
+                    juegoTerminado = true,
+                    historial = state.historial + mensaje
+                )
+                return
+            }
+
+            val nuevoIndex =
+                if (state.jugadorActualIndex >= lista.size) 0 else state.jugadorActualIndex
+
+            state = state.copy(
+                jugadores = lista,
+                jugadorActualIndex = nuevoIndex,
+                turno = state.turno + 1,
+                mensaje = "$mensaje\n💀 ${jugador.nombre} eliminado",
+                historial = state.historial + mensaje
+            )
+            return
+        }
+
+        // 🔄 TURNO NORMAL
+        actualizarJugador(dineroNuevo)
+
+        val siguiente = (state.jugadorActualIndex + 1) % state.jugadores.size
 
         state = state.copy(
-            dinero = resultado.dinero,
+            jugadorActualIndex = siguiente,
             turno = state.turno + 1,
-            mensaje = resultado.mensaje,
-            juegoTerminado = resultado.terminado,
-            gano = resultado.gano,
-            historial = state.historial + resultado.mensaje
+            mensaje = mensaje,
+            accionActual = accion,
+            historial = state.historial + mensaje
         )
     }
 
+    // 🔧 ACTUALIZAR JUGADOR
+    private fun actualizarJugador(nuevoDinero: Int) {
+        val lista = state.jugadores.toMutableList()
+        val jugador = lista[state.jugadorActualIndex]
+        lista[state.jugadorActualIndex] = jugador.copy(dinero = nuevoDinero)
+        state = state.copy(jugadores = lista)
+    }
+
     // 🎲 EVENTOS
-    private fun generarEvento(): Pair<Int, String> {
-        return when (Random.nextInt(1, 6)) {
-            1 -> Pair(300, "🎉 Evento: Ganaste la lotería +300")
-            2 -> Pair(-200, "⚠ Evento: Pagaste multa -200")
-            3 -> Pair(150, "💰 Evento: Bono inesperado +150")
-            4 -> Pair(-120, "💸 Evento: Gasto médico -120")
-            5 -> Pair(250, "📈 Evento: Inversión extra +250")
-            else -> Pair(-80, "📉 Evento: Pérdida menor -80")
+    private fun evento(): Pair<Int, String> {
+        return when (Random.nextInt(1, 5)) {
+            1 -> 300 to "🎉 Lotería +300"
+            2 -> -200 to "⚠ Multa -200"
+            3 -> 150 to "💰 Bono +150"
+            else -> -100 to "💸 Gasto inesperado -100"
         }
     }
-
-    // 🏆 💀 VALIDACIÓN CENTRALIZADA
-    private fun verificarEstado(dinero: Int, mensajeBase: String): Resultado {
-
-        var mensajeFinal = mensajeBase
-        var terminado = false
-        var gano = false
-
-        when {
-            dinero >= state.meta -> {
-                mensajeFinal += "\n🏆 ¡Meta alcanzada!"
-                terminado = true
-                gano = true
-            }
-
-            dinero <= 0 -> {
-                mensajeFinal += "\n💀 Te quedaste sin dinero"
-                terminado = true
-                gano = false
-            }
-        }
-
-        return Resultado(dinero, mensajeFinal, terminado, gano)
-    }
-
-    // 📦 DATA INTERNA
-    data class Resultado(
-        val dinero: Int,
-        val mensaje: String,
-        val terminado: Boolean,
-        val gano: Boolean
-    )
 }
